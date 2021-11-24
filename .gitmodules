@@ -1,4 +1,4 @@
 [submodule "darknet_ros"]
 	path = darknet_ros
-	url = git@github.com:leggedrobotics/darknet_ros.git
+	url = git@github.com:blakermchale/darknet_ros.git
 	branch = foxy
