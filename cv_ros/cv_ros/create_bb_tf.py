@@ -73,7 +73,7 @@ class BBTfCreator(Node):
 
         header = Header()
         header.stamp = self.get_clock().now().to_msg() # bb_msg.header.stamp
-        header.frame_id = self._namespace
+        header.frame_id = f"{self._namespace}/realsense"
         tf_list = []
 
         for bb in bb_msg.bounding_boxes:
