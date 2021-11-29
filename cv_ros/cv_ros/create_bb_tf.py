@@ -25,11 +25,12 @@ class BBTfCreator(Node):
 
         # Parameters
         self.declare_parameter("max_dev", 2)
-        self.declare_parameter("fps", 30.0)  # FPS assumption for time delay between matching messages
+        self.declare_parameter("fps", 10.0)  # FPS assumption for time delay between matching messages
         self.declare_parameter("prob_thresh", 0.7)  # Threshold to ignore bounding box
 
         self._fps = self.get_parameter("fps").value
-        self._info = None
+        self._depth_info = None
+        self._rgb_info = None
 
         self.bridge = CvBridge()
 
@@ -38,7 +39,8 @@ class BBTfCreator(Node):
         self._sub_depth = Subscriber(self, Image, "realsense/aligned_depth_to_color/image_raw", qos_profile=1)
         self._ts = ApproximateTimeSynchronizer([self._sub_bb, self._sub_depth], 2, 1.0/self._fps)
         self._ts.registerCallback(self._cb_ts)
-        self._sub_info = self.create_subscription(CameraInfo, "realsense/aligned_depth_to_color/camera_info", self._cb_info, 1)
+        self._sub_depth_info = self.create_subscription(CameraInfo, "realsense/aligned_depth_to_color/camera_info", self._cb_depth_info, 1)
+        self._sub_rgb_info = self.create_subscription(CameraInfo, "realsense/color/camera_info", self._cb_rgb_info, 1)
 
         # Publishers
         self._pub_bb_depth = self.create_publisher(Image, "bb_depth", 1)
@@ -46,32 +48,43 @@ class BBTfCreator(Node):
         # TF
         self._br = TransformBroadcaster(self)
 
-    def _cb_info(self, msg: CameraInfo):
-        self._info = msg
-        if not self.destroy_subscription(self._sub_info):
+        self.get_logger().info("Initialized BBTFCreator!")
+
+    def _cb_depth_info(self, msg: CameraInfo):
+        self._depth_info = msg
+        if not self.destroy_subscription(self._sub_depth_info):
             self.get_logger().error("Couldn't stop camera info subscription")
             return
-        del self._sub_info
+        del self._sub_depth_info
+
+    def _cb_rgb_info(self, msg: CameraInfo):
+        self._rgb_info = msg
+        if not self.destroy_subscription(self._sub_rgb_info):
+            self.get_logger().error("Couldn't stop camera info subscription")
+            return
+        del self._sub_rgb_info
 
     def _cb_ts(self, bb_msg: BoundingBoxes, depth_msg: Image):
-        if self._info is None:
+        if self._depth_info is None or self._rgb_info is None:
+            self.get_logger().warn("Camera info not set yet")
             return
         # self.get_logger().info(f"{bb_msg.header.stamp}, {depth_msg.header.stamp}")
-        info = self._info
+        depth_info = self._depth_info
+        rgb_info = self._rgb_info
         max_dev = self.get_parameter("max_dev").value
 
         im_encoding = "passthrough"
         im = self.bridge.imgmsg_to_cv2(depth_msg,im_encoding)
 
         intrinsics = rs2.intrinsics()
-        intrinsics.width = info.width
-        intrinsics.height = info.height
-        intrinsics.ppx = info.k[2]
-        intrinsics.ppy = info.k[5]
-        intrinsics.fx = info.k[0]
-        intrinsics.fy = info.k[4]
+        intrinsics.width = depth_info.width
+        intrinsics.height = depth_info.height
+        intrinsics.ppx = depth_info.k[2]
+        intrinsics.ppy = depth_info.k[5]
+        intrinsics.fx = depth_info.k[0]
+        intrinsics.fy = depth_info.k[4]
         intrinsics.model = rs2.distortion.none
-        if info.d: intrinsics.coeffs = [float(i) for i in info.d]
+        if depth_info.d: intrinsics.coeffs = [float(i) for i in depth_info.d]
 
         header = Header()
         header.stamp = self.get_clock().now().to_msg() # bb_msg.header.stamp
@@ -81,7 +94,15 @@ class BBTfCreator(Node):
         for bb in bb_msg.bounding_boxes:
             if bb.probability <= self.prob_thresh:
                 continue
-            xmin, ymin, xmax, ymax = bb.xmin, bb.ymin, bb.xmax, bb.ymax
+            if depth_info.width != rgb_info.width and depth_info.height != rgb_info.height:
+                # Scale xmin from color image bounding box to depth image
+                xmin = int(np.ceil((bb.xmin/rgb_info.width)*depth_info.width))
+                xmax = int(np.ceil((bb.xmax/rgb_info.width)*depth_info.width))
+                ymin = int(np.ceil((bb.ymin/rgb_info.height)*depth_info.height))
+                ymax = int(np.ceil((bb.ymax/rgb_info.height)*depth_info.height))
+            else:
+                xmin, ymin, xmax, ymax = bb.xmin, bb.ymin, bb.xmax, bb.ymax
+            # self.get_logger().info(f"{ymin} {ymax} {xmin} {xmax}")
             bbcen = np.asfarray([(xmin + xmax)/2, (ymin + ymax)/2])
             class_id = bb.class_id.replace(" ", "_")
             _id = bb.id
