@@ -10,7 +10,7 @@ import numpy as np
 import pyrealsense2 as rs2
 from tf2_ros.transform_broadcaster import TransformBroadcaster
 
-from ros2_utils import convert_axes_from_msg, AxesFrame
+from ros2_utils import convert_axes_from_msg, AxesFrame, msg_contains_nan
 
 from sensor_msgs.msg import Image, CompressedImage, CameraInfo
 from darknet_ros_msgs.msg import BoundingBoxes
@@ -121,6 +121,8 @@ class BBTfCreator(Node):
             bb_tf.transform.translation.y = result[0]/1000.
             bb_tf.transform.translation.z = result[1]/1000.
             bb_tf.transform.translation.x = result[2]/1000.
+            if msg_contains_nan(bb_tf.transform.translation):
+                continue
             # detection_tf.transform.rotation =  # TODO: is there a way to get orientation of detection?
             bb_tf.transform = convert_axes_from_msg(bb_tf.transform, AxesFrame.URHAND, AxesFrame.RHAND)
             bb_tf.child_frame_id = f"{self._namespace}/darknet/{class_id}"
