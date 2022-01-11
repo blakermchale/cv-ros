@@ -31,6 +31,7 @@ class BBTfCreator(Node):
         self._fps = self.get_parameter("fps").value
         self._depth_info = None
         self._rgb_info = None
+        self._unreasonable_clip = 40.0  # Clip values greater than this are unreasonable for depth camera so assume mm and convert
 
         self.bridge = CvBridge()
 
@@ -108,6 +109,7 @@ class BBTfCreator(Node):
             _id = bb.id
             bb_im = im[ymin:ymax,xmin:xmax]
             bb_im_non_zero = bb_im[bb_im > 0]  # exclude zero extremes
+            bb_im_non_zero = bb_im_non_zero[bb_im_non_zero != np.inf]  # exclude inf extremes
             bb_im_mean = np.mean(bb_im_non_zero)
             bb_im_std = np.std(bb_im_non_zero)
             bb_im_dist = abs(bb_im - bb_im_mean)
@@ -118,9 +120,14 @@ class BBTfCreator(Node):
             result = rs2.rs2_deproject_pixel_to_point(intrinsics, bbcen, avg_depth)
 
             bb_tf = TransformStamped()
-            bb_tf.transform.translation.y = result[0]/1000.
-            bb_tf.transform.translation.z = result[1]/1000.
-            bb_tf.transform.translation.x = result[2]/1000.
+            if np.linalg.norm(result) > self._unreasonable_clip:  # Assume mm if large
+                result[0] = result[0]/1000.
+                result[1] = result[1]/1000.
+                result[2] = result[2]/1000.
+            bb_tf.transform.translation.y = result[0]
+            bb_tf.transform.translation.z = result[1]
+            bb_tf.transform.translation.x = result[2]
+            # self.get_logger().warn(f"result: {np.linalg.norm(result)}, std: {bb_im_std}, max_dev: {max_dev}, bb_im_mean: {bb_im_mean}, max: {bb_im_non_zero.max()}, total: {bb_im.size}, zeros: {np.count_nonzero(bb_im==0)}, infs: {np.count_nonzero(bb_im==np.inf)}")
             if msg_contains_nan(bb_tf.transform.translation):
                 continue
             # detection_tf.transform.rotation =  # TODO: is there a way to get orientation of detection?
