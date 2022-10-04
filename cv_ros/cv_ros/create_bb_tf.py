@@ -18,6 +18,25 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import TransformStamped
 
 
+# https://github.com/IntelRealSense/librealsense/blob/e9f05c55f88f6876633bd59fd1cb3848da64b699/src/cuda/rscuda_utils.cuh#L72
+# def deproject_pixel_to_point():
+#     float x = (pixel[0] - intrin->ppx) / intrin->fx;
+#     float y = (pixel[1] - intrin->ppy) / intrin->fy;
+
+#     if (intrin->model == RS2_DISTORTION_INVERSE_BROWN_CONRADY)
+#     {
+#         float r2 = x * x + y * y;
+#         float f = 1 + intrin->coeffs[0] * r2 + intrin->coeffs[1] * r2*r2 + intrin->coeffs[4] * r2*r2*r2;
+#         float ux = x * f + 2 * intrin->coeffs[2] * x*y + intrin->coeffs[3] * (r2 + 2 * x*x);
+#         float uy = y * f + 2 * intrin->coeffs[3] * x*y + intrin->coeffs[2] * (r2 + 2 * y*y);
+#         x = ux;
+#         y = uy;
+#     }
+#     point[0] = depth * x;
+#     point[1] = depth * y;
+#     point[2] = depth;
+
+
 class BBTfCreator(Node):
     def __init__(self):
         super().__init__("bb_tf_creator")
